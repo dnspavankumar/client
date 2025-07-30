@@ -1,5 +1,5 @@
 /* src/components/MapWidget.css */
-
+/**/
 .map-widget {
   position: fixed; /* Or absolute, depending on needs */
   z-index: 998; /* Slightly below webcam/weather if needed */
