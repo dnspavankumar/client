@@ -1,73 +1,79 @@
 // src/App.jsx
+// Main React application component that handles WebSocket communication with ADA AI assistant
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import io from "socket.io-client";
+import io from "socket.io-client";  // WebSocket client for real-time communication
 
-// Import Components
-import ChatBox from "./components/ChatBox";
-import InputArea from "./components/InputArea";
-import StatusDisplay from "./components/StatusDisplay";
+// Import Components - UI building blocks for the application
+import ChatBox from "./components/ChatBox";  // Displays conversation messages
+import InputArea from "./components/InputArea";  // Text input and voice controls
+import StatusDisplay from "./components/StatusDisplay";  // Shows connection status
 import AiVisualizer, {
   STATUS as VISUALIZER_STATUS,
-} from "./components/AiVisualizer";
-import WebcamFeed from "./components/WebcamFeed";
-import WeatherWidget from "./components/WeatherWidget";
-import MapWidget from "./components/MapWidget";
-import CodeExecutionWidget from "./components/CodeExecutionWidget";
+} from "./components/AiVisualizer";  // Visual feedback for AI processing
+import WebcamFeed from "./components/WebcamFeed";  // Real-time video feed
+import WeatherWidget from "./components/WeatherWidget";  // Weather information display
+import MapWidget from "./components/MapWidget";  // Map visualization
+import CodeExecutionWidget from "./components/CodeExecutionWidget";  // Code execution interface
 import SearchResultsWidget from "./components/SearchResultsWidget"; // **** IMPORT NEW WIDGET ****
 
-// Import CSS
-import "./App.css";
-import "./components/ChatBox.css";
-import "./components/InputArea.css";
-import "./components/StatusDisplay.css";
-import "./components/WebcamFeed.css";
-import "./components/MapWidget.css";
-import "./components/CodeExecutionWidget.css";
+// Import CSS - Styling for all components
+import "./App.css";  // Main application styles
+import "./components/ChatBox.css";  // Chat interface styling
+import "./components/InputArea.css";  // Input area styling
+import "./components/StatusDisplay.css";  // Status display styling
+import "./components/WebcamFeed.css";  // Webcam feed styling
+import "./components/MapWidget.css";  // Map widget styling
+import "./components/CodeExecutionWidget.css";  // Code execution styling
 import "./components/SearchResultsWidget.css"; // **** IMPORT NEW CSS ****
 // import './components/Visualizer.module.css'; // Already imported via AiVisualizer
 
-// Constants
-// Use environment variable for backend URL or fallback to localhost
+// Constants - Configuration values
+// Use environment variable for backend URL or fallback to localhost for development
 const SERVER_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
 function App() {
   console.log("--- App component rendered ---");
 
   // --- State Variables ---
-  const [isConnected, setIsConnected] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
-  const [statusText, setStatusText] = useState("Initializing...");
-  const [messages, setMessages] = useState([]);
-  const [isListening, setIsListening] = useState(false);
-  const [micSupported, setMicSupported] = useState(false);
-  const [weatherInfo, setWeatherInfo] = useState(null);
-  const [mapInfo, setMapInfo] = useState(null);
+  // Connection and audio states
+  const [isConnected, setIsConnected] = useState(false);  // WebSocket connection status
+  const [isMuted, setIsMuted] = useState(true);  // Audio mute state
+  const [statusText, setStatusText] = useState("Initializing...");  // Status message display
+  const [messages, setMessages] = useState([]);  // Chat message history
+  const [isListening, setIsListening] = useState(false);  // Voice recognition active state
+  const [micSupported, setMicSupported] = useState(false);  // Microphone support detection
+  
+  // Widget states for different features
+  const [weatherInfo, setWeatherInfo] = useState(null);  // Weather data from AI
+  const [mapInfo, setMapInfo] = useState(null);  // Map data from AI
   const [visualizerStatus, setVisualizerStatus] = useState(
-    VISUALIZER_STATUS.IDLE
+    VISUALIZER_STATUS.IDLE  // AI processing visual feedback state
   );
-  const [showWebcam, setShowWebcam] = useState(false);
-  const [executableCode, setExecutableCode] = useState(null);
-  const [codeLanguage, setCodeLanguage] = useState(null);
+  const [showWebcam, setShowWebcam] = useState(false);  // Webcam visibility toggle
+  const [executableCode, setExecutableCode] = useState(null);  // Code to execute
+  const [codeLanguage, setCodeLanguage] = useState(null);  // Programming language for code
   // **** ADD SEARCH RESULTS STATE ****
   const [searchInfo, setSearchInfo] = useState(null); // Holds {query: '...', results: [...]}
   // **** END SEARCH RESULTS STATE ****
 
   // --- Refs ---
-  const socket = useRef(null);
-  const recognition = useRef(null);
-  const audioContext = useRef(null);
-  const audioQueue = useRef([]);
-  const isPlaying = useRef(false);
-  const userRequestedStop = useRef(false);
-  const restartTimer = useRef(null);
-  const adaMessageIndex = useRef(-1);
-  const isMutedRef = useRef(isMuted);
-  const isListeningRef = useRef(isListening);
-  const startRecognitionRef = useRef();
-  const isConnectedRef = useRef(isConnected);
-  const playNextAudioChunkRef = useRef();
+  // Persistent references that don't trigger re-renders
+  const socket = useRef(null);  // WebSocket connection instance
+  const recognition = useRef(null);  // Speech recognition API instance
+  const audioContext = useRef(null);  // Web Audio API context for sound playback
+  const audioQueue = useRef([]);  // Queue of audio chunks to play
+  const isPlaying = useRef(false);  // Audio playback status
+  const userRequestedStop = useRef(false);  // User-initiated stop flag
+  const restartTimer = useRef(null);  // Timer for connection restart attempts
+  const adaMessageIndex = useRef(-1);  // Track ADA message sequence
+  const isMutedRef = useRef(isMuted);  // Mute state reference for callbacks
+  const isListeningRef = useRef(isListening);  // Listening state reference for callbacks
+  const startRecognitionRef = useRef();  // Speech recognition start function reference
+  const isConnectedRef = useRef(isConnected);  // Connection state reference for callbacks
+  const playNextAudioChunkRef = useRef();  // Audio playback function reference
 
   // --- Footer Time ---
+  // Display current time in the footer
   const getCurrentTime = () => {
     return new Date().toLocaleString("en-US", {
       // Note: Changed timeZone to reflect your actual location based on context
@@ -78,23 +84,24 @@ function App() {
       hour12: true,
     });
   };
-  const [currentTime, setCurrentTime] = useState(getCurrentTime());
+  const [currentTime, setCurrentTime] = useState(getCurrentTime());  // Current time state
   useEffect(() => {
-    const timerId = setInterval(() => setCurrentTime(getCurrentTime()), 1000);
-    return () => clearInterval(timerId);
+    const timerId = setInterval(() => setCurrentTime(getCurrentTime()), 1000);  // Update time every second
+    return () => clearInterval(timerId);  // Cleanup timer on unmount
   }, []);
 
   // --- AudioContext Management (Callbacks) ---
+  // Initialize Web Audio API context for sound playback
   const initializeAudioContext = useCallback(() => {
     if (!audioContext.current) {
       try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;  // Cross-browser compatibility
         if (!AudioCtx) {
           console.error("Web Audio API not supported.");
           setStatusText((prev) => `${prev} (Audio Playback Not Supported)`);
           return false;
         }
-        audioContext.current = new AudioCtx({ sampleRate: 24000 });
+        audioContext.current = new AudioCtx({ sampleRate: 24000 });  // Create audio context with specific sample rate
         console.log("AudioContext created. State:", audioContext.current.state);
         if (audioContext.current.state === "suspended") {
           console.log("AudioContext suspended...");
@@ -907,11 +914,7 @@ function App() {
       )}
       {/* **** END SEARCH RESULTS WIDGET RENDER **** */}
 
-      <footer>
-        {/* Updated Location */}
-        <p>Location: Smyrna, Georgia</p>
-        <p>Current Time: {currentTime}</p>
-      </footer>
+    
     </div>
   );
 }
